@@ -1,0 +1,122 @@
+-- task 1
+
+/*
+
+In this case there is big difference in queries, direct JOIN does not provides the resuld required. In the way CTE is best option in terms of readability and query logic.
+The main idea is to make two different CTE which selects recenue and last date and combine it into select statement with inner join.
+-- In fact it provides the same business result, but in terms of calculations is way different.
+
+
+*/
+
+-- with direct JOIN we can't find the exact solutioin we need in that case the last payment date. There are limitations and we could only provide the following result.
+
+SELECT
+  s.first_name,
+  s.last_name,
+  s.store_id,
+  SUM(p.amount) AS revenue
+
+FROM staff as s
+INNER JOIN payment AS p
+ ON p.staff_id = s.staff_id
+  WHERE p.payment_date >= DATE '2017-01-01'
+  AND p.payment_date < DATE '2018-01-01'
+GROUP BY s.staff_id, s.first_name,s.last_name,s.store_id
+ORDER BY revenue DESC
+LIMIT 3
+
+
+-- CTE
+-- Show the three employees who generated the most revenue in 2017.
+-- The latest store is determined from each employee's latest 2017 payment.
+-- Only payment_date is used for the year filter.
+
+WITH staff_revenue AS (
+    SELECT
+        p.staff_id,
+        SUM(p.amount) AS revenue
+    FROM public.payment AS p
+    WHERE p.payment_date >= DATE '2017-01-01'
+      AND p.payment_date < DATE '2018-01-01'
+    GROUP BY
+        p.staff_id
+),
+last_store AS (
+    SELECT DISTINCT ON (p.staff_id)
+        p.staff_id,
+        i.store_id,
+        p.payment_date AS last_payment_date
+    FROM public.payment AS p
+    INNER JOIN public.rental AS r
+        ON r.rental_id = p.rental_id
+    INNER JOIN public.inventory AS i
+        ON i.inventory_id = r.inventory_id
+    WHERE p.payment_date >= DATE '2017-01-01'
+      AND p.payment_date < DATE '2018-01-01'
+    ORDER BY
+        p.staff_id,
+        p.payment_date DESC,
+        p.payment_id DESC
+)
+
+
+SELECT
+    s.first_name,
+    s.last_name,
+    ls.store_id,
+    ls.last_payment_date,
+    sr.revenue
+FROM staff_revenue AS sr
+INNER JOIN public.staff AS s
+    ON s.staff_id = sr.staff_id
+INNER JOIN last_store AS ls
+    ON ls.staff_id = sr.staff_id
+ORDER BY
+    sr.revenue DESC
+LIMIT 3
+
+
+
+-- There is posibility for the subquery, but it is too complicated to read.
+
+
+SELECT
+    s.first_name,
+    s.last_name,
+    ls.store_id,
+    ls.last_payment_date,
+    sr.revenue
+FROM (
+    SELECT
+        p.staff_id,
+        SUM(p.amount) AS revenue
+    FROM public.payment AS p
+    WHERE p.payment_date >= DATE '2017-01-01'
+      AND p.payment_date < DATE '2018-01-01'
+    GROUP BY
+        p.staff_id
+) AS sr
+INNER JOIN public.staff AS s
+    ON s.staff_id = sr.staff_id
+INNER JOIN (
+    SELECT DISTINCT ON (p.staff_id)
+        p.staff_id,
+        i.store_id,
+        p.payment_date AS last_payment_date
+    FROM public.payment AS p
+    INNER JOIN public.rental AS r
+        ON r.rental_id = p.rental_id
+    INNER JOIN public.inventory AS i
+        ON i.inventory_id = r.inventory_id
+    WHERE p.payment_date >= DATE '2017-01-01'
+      AND p.payment_date < DATE '2018-01-01'
+    ORDER BY
+        p.staff_id,
+        p.payment_date DESC,
+        p.payment_id DESC
+) AS ls
+    ON ls.staff_id = sr.staff_id
+ORDER BY
+    sr.revenue DESC
+LIMIT 3;
