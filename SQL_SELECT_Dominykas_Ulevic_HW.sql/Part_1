@@ -90,6 +90,7 @@ The results of query execution was almost the same therefor I decided not to inc
 """"" -- Direct JOIN
 SELECT s.store_id,
     CONCAT_WS(', ', a.address, a.address2) AS store_address,
+    -- CONCAT_WS combines colums into a one
     SUM(p.amount) AS revenue
 FROM public.store AS s
     INNER JOIN public.address AS a ON a.address_id = s.address_id
