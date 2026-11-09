@@ -32,7 +32,7 @@ GROUP BY s.staff_id,
     s.first_name,
     s.last_name,
     s.store_id
-ORDER BY revenue DESC
+ORDER BY revenue DESC;
 LIMIT 3 -- CTE
     WITH staff_revenue AS (
         SELECT p.staff_id,
@@ -63,7 +63,7 @@ SELECT s.first_name,
 FROM staff_revenue AS sr
     INNER JOIN public.staff AS s ON s.staff_id = sr.staff_id
     INNER JOIN last_store AS ls ON ls.staff_id = sr.staff_id
-ORDER BY sr.revenue DESC
+ORDER BY sr.revenue DESC;
 LIMIT 3 -- Subquery
 SELECT s.first_name,
     s.last_name,

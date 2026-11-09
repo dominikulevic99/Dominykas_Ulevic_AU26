@@ -66,28 +66,29 @@ FROM (
     ) AS animation_films
 ORDER BY animation_films.title ASC;
 -- task 2
-"""
-Task: Calculate the revenue earned by each rental store after March 2017, including the combined address and revenue.
-
-The query uses INNER JOIN because the report should include stores with matching address, inventory, rental and payment records.
+/*
+ Task: Calculate the revenue earned by each rental store after March 2017, including the combined address and revenue.
+ 
+ The query uses INNER JOIN because the report should include stores with matching address, inventory, rental and payment records.
  The relationship path is:
-
-store → address
-store → inventory
-inventory → rental
-rental → payment
-
-The revenue is calculated with SUM(payment.amount). The date condition is applied to payment.payment_date because revenue is recorded when the payment is made. The condition begins on 2017-04-01 because the task says “after March 2017.”
-
-The address and address2 fields are combined into one output column using CONCAT_WS. This function is useful because it handles NULL values in address2 without producing an unnecessary separator.
-
-For this task, I would use the direct JOIN solution in production because the query has one clear aggregation step and the table relationships are easy to understand. 
-The CTE version improves readability by separating the payment collection step from the aggregation step. 
-The subquery version is valid but introduces an additional nesting level, so it is less readable for this case.
-
-The results of query execution was almost the same therefor I decided not to include it to the report.
-
-""""" -- Direct JOIN
+ 
+ store → address
+ store → inventory
+ inventory → rental
+ rental → payment
+ 
+ The revenue is calculated with SUM(payment.amount). The date condition is applied to payment.payment_date because revenue is recorded when the payment is made. The condition begins on 2017-04-01 because the task says “after March 2017.”
+ 
+ The address and address2 fields are combined into one output column using CONCAT_WS. This function is useful because it handles NULL values in address2 without producing an unnecessary separator.
+ 
+ For this task, I would use the direct JOIN solution in production because the query has one clear aggregation step and the table relationships are easy to understand. 
+ The CTE version improves readability by separating the payment collection step from the aggregation step. 
+ The subquery version is valid but introduces an additional nesting level, so it is less readable for this case.
+ 
+ The results of query execution was almost the same therefor I decided not to include it to the report.
+ 
+ */
+-- Direct JOIN
 SELECT s.store_id,
     CONCAT_WS(', ', a.address, a.address2) AS store_address,
     -- CONCAT_WS combines colums into a one
@@ -151,17 +152,7 @@ ORDER BY sr.store_id ASC;
  result. They are included only because the assignment requires JOIN, CTE and
  subquery versions.
  */
-SELECT a.first_name,
-    a.last_name,
-    COUNT(f.film_id) AS number_of_movies
-FROM actor AS a
-    INNER JOIN film_actor AS fa ON a.actor_id = fa.actor_id
-    INNER JOIN film AS f ON f.film_id = fa.film_id
-WHERE f.release_year >= '2015'
-GROUP BY a.first_name,
-    a.last_name
-ORDER BY number_of_movies DESC
-LIMIT 5
+-- update for thid problem the faster desicion is FETCH FIRST 5 ROWS WITH TIES this will prevents LIMIT problem when we have dublicates number of films
 SELECT a.first_name,
     a.last_name,
     COUNT(f.film_id) AS number_of_movies
@@ -173,16 +164,16 @@ GROUP BY a.actor_id,
     -- we use a.actor_id because names could have duplicates
     a.first_name,
     a.last_name
-ORDER BY number_of_movies DESC,
-    a.last_name ASC,
-    a.first_name ASC
-LIMIT 5;
+ORDER BY COUNT(DISTINCT f.film_id) DESC
+FETCH FIRST 5 ROWS WITH TIES;
 -- CTE
+-- updated for the cte we could use ranks method in order to get the correct result
+-- in this case we have DENSE_RANK and have a top for each group 1 is 12 movies 2 is 11 movies and so on.
 WITH actor_movie_counts AS (
     SELECT a.actor_id,
         a.first_name,
         a.last_name,
-        COUNT(f.film_id) AS number_of_movies
+        COUNT(DISTINCT f.film_id) AS number_of_movies
     FROM public.actor AS a
         INNER JOIN public.film_actor AS fa ON fa.actor_id = a.actor_id
         INNER JOIN public.film AS f ON f.film_id = fa.film_id
@@ -190,22 +181,33 @@ WITH actor_movie_counts AS (
     GROUP BY a.actor_id,
         a.first_name,
         a.last_name
+),
+ranked_actors AS (
+    SELECT first_name,
+        last_name,
+        number_of_movies,
+        DENSE_RANK() OVER (
+            ORDER BY number_of_movies DESC
+        ) AS movie_rank
+    FROM actor_movie_counts
 )
 SELECT first_name,
     last_name,
     number_of_movies
-FROM actor_movie_counts
-ORDER BY number_of_movies DESC
-LIMIT 5;
+FROM ranked_actors
+WHERE movie_rank <= 5
+ORDER BY number_of_movies DESC,
+    last_name,
+    first_name;
 -- Subquery
-SELECT actor_counts.first_name,
-    actor_counts.last_name,
-    actor_counts.number_of_movies
+SELECT first_name,
+    last_name,
+    number_of_movies
 FROM (
         SELECT a.actor_id,
             a.first_name,
             a.last_name,
-            COUNT(f.film_id) AS number_of_movies
+            COUNT(DISTINCT f.film_id) AS number_of_movies
         FROM public.actor AS a
             INNER JOIN public.film_actor AS fa ON fa.actor_id = a.actor_id
             INNER JOIN public.film AS f ON f.film_id = fa.film_id
@@ -213,9 +215,9 @@ FROM (
         GROUP BY a.actor_id,
             a.first_name,
             a.last_name
-    ) AS actor_counts
-ORDER BY actor_counts.number_of_movies DESC
-LIMIT 5;
+    ) AS actor_movie_counts
+ORDER BY number_of_movies DESC
+FETCH FIRST 5 ROWS WITH TIES;
 -- task 4
 /*
  Show the number of Drama, Travel and Documentary films per release year.
@@ -273,7 +275,8 @@ SELECT release_year,
     ) AS number_of_documentary_movies
 FROM film_categories
 GROUP BY release_year
-ORDER BY release_year DESC --Subquery
+ORDER BY release_year DESC;
+--Subquery
 SELECT release_year,
     COUNT(
         DISTINCT CASE
@@ -299,4 +302,4 @@ FROM (
             LEFT JOIN public.category AS c ON c.category_id = fc.category_id
     ) AS film_categories
 GROUP BY release_year
-ORDER BY release_year DESC
+ORDER BY release_year DESC;
