@@ -1,0 +1,136 @@
+/*
+ V1: Calculate how many years have passed since each actor's latest
+ recorded film.
+ 
+ The task does not specify a fixed reference year. Therefore, the
+ calculation uses the current calendar year obtained from the database
+ server with EXTRACT(YEAR FROM CURRENT_DATE).
+ 
+ A direct query is sufficient because the calculation requires only one
+ aggregation per actor. A CTE or subquery would not provide a significant
+ benefit here: there is no intermediate result that must be reused, and
+ adding another query layer would make the solution less concise.
+ */
+--JOIN
+SELECT a.first_name,
+    a.last_name,
+    MAX(f.release_year) AS latest_release_year,
+    EXTRACT(
+        YEAR
+        FROM CURRENT_DATE
+    )::integer - MAX(f.release_year) AS inactivity_years
+FROM actor a
+    INNER JOIN film_actor fa ON fa.actor_id = a.actor_id
+    INNER JOIN film f ON f.film_id = fa.film_id
+GROUP BY a.actor_id,
+    a.first_name,
+    a.last_name
+ORDER BY inactivity_years DESC;
+-- CTE
+WITH inactivity_years AS (
+    SELECT a.first_name,
+        a.last_name,
+        MAX(f.release_year) AS latest_release_year,
+        EXTRACT(
+            YEAR
+            FROM CURRENT_DATE
+        )::integer - MAX(f.release_year) AS inactivity_years
+    FROM actor a
+        INNER JOIN film_actor fa ON fa.actor_id = a.actor_id
+        INNER JOIN film f ON f.film_id = fa.film_id
+    GROUP BY a.actor_id,
+        a.first_name,
+        a.last_name
+)
+SELECT *
+FROM inactivity_years
+ORDER BY inactivity_years DESC;
+-- Subquery
+SELECT *
+FROM (
+        SELECT a.first_name,
+            a.last_name,
+            MAX(f.release_year) AS latest_release_year,
+            EXTRACT(
+                YEAR
+                FROM CURRENT_DATE
+            )::integer - MAX(f.release_year) AS inactivity_years
+        FROM actor a
+            INNER JOIN film_actor fa ON fa.actor_id = a.actor_id
+            INNER JOIN film f ON f.film_id = fa.film_id
+        GROUP BY a.actor_id,
+            a.first_name,
+            a.last_name
+    ) AS inactivity_years
+ORDER BY inactivity_years DESC;
+-- V 2
+-- LImitation for this task is that there is no clear info about gaps and why do we need all the gaps
+-- from my perspectice it is way better to provide biggest gap and film related with gap. This solution is in the V2_2_edition
+-- I found no way to performe it with direct JOIN or subquery, so the only solution is CTE
+WITH actor_years AS (
+    -- One row per actor and release year.
+    -- DISTINCT removes duplicate films released in the same year.
+    SELECT DISTINCT fa.actor_id,
+        a.first_name,
+        a.last_name,
+        f.release_year
+    FROM public.film_actor AS fa
+        INNER JOIN public.film AS f ON f.film_id = fa.film_id
+        INNER JOIN actor a ON a.actor_id = fa.actor_id
+    WHERE f.release_year IS NOT NULL
+),
+actor_gaps AS (
+    SELECT -- Calculate each sequential gap
+        earlier.actor_id,
+        earlier.release_year AS earlier_year,
+        MIN(later.release_year) AS next_year,
+        MIN(later.release_year) - earlier.release_year AS gap_years
+    FROM actor_years AS earlier
+        INNER JOIN actor_years AS later ON later.actor_id = earlier.actor_id
+        AND later.release_year > earlier.release_year
+    GROUP BY earlier.actor_id,
+        earlier.release_year
+) -- Find the sequential gap for each actor.
+SELECT ay.first_name,
+    ay.last_name,
+    ag.gap_years
+FROM actor_years AS ay
+    INNER JOIN actor_gaps AS ag ON ag.actor_id = ay.actor_id
+WHERE ag.gap_years > 2
+ORDER BY ay.first_name,
+    ay.last_name,
+    ag.gap_years;
+-- V2_2_edition but to relate a film was challenging part a leave it for future tasks
+WITH actor_years AS (
+    -- One row per actor and release year.
+    -- DISTINCT removes duplicate films released in the same year.
+    SELECT DISTINCT fa.actor_id,
+        a.first_name,
+        a.last_name,
+        f.release_year
+    FROM public.film_actor AS fa
+        INNER JOIN public.film AS f ON f.film_id = fa.film_id
+        INNER JOIN actor a ON a.actor_id = fa.actor_id
+    WHERE f.release_year IS NOT NULL
+),
+actor_gaps AS (
+    SELECT -- Calculate each sequential gap
+        earlier.actor_id,
+        earlier.release_year AS earlier_year,
+        MIN(later.release_year) AS next_year,
+        MIN(later.release_year) - earlier.release_year AS gap_years
+    FROM actor_years AS earlier
+        INNER JOIN actor_years AS later ON later.actor_id = earlier.actor_id
+        AND later.release_year > earlier.release_year
+    GROUP BY earlier.actor_id,
+        earlier.release_year
+) -- Find the largest sequential gap for each actor.
+SELECT ay.first_name,
+    ay.last_name,
+    MAX(ag.gap_years) AS biggest_gap
+FROM actor_years AS ay
+    INNER JOIN actor_gaps AS ag ON ag.actor_id = ay.actor_id
+GROUP BY ay.actor_id,
+    ay.first_name,
+    ay.last_name
+ORDER BY biggest_gap DESC;

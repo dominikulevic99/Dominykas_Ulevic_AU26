@@ -1,0 +1,188 @@
+-- task 1
+/*
+ The direct JOIN query can calculate total revenue per employee, but it cannot
+ produce the complete required result by itself. It returns the employee's
+ staff.store_id value and does not identify the store associated with the
+ employee's latest 2017 payment. Therefore, it is useful as a baseline revenue
+ calculation but is incomplete for the full business requirement.
+ 
+ The CTE solution is the most readable for this task because the business logic
+ contains two separate stages: calculating total revenue per employee and finding
+ the store associated with the latest payment. Each stage has a meaningful name,
+ and the final query combines the results using staff_id.
+ 
+ The subquery solution produces the same complete result, but both intermediate
+ calculations are nested inside the main query. This makes the query more
+ difficult to read and maintain than the CTE version.
+ 
+ I would use the CTE solution in production because it represents the two
+ business steps clearly and is easier to validate and modify. The direct JOIN
+ solution would be preferable for a simpler revenue-only report.
+ */
+-- JOIN
+SELECT s.first_name,
+    s.last_name,
+    s.store_id,
+    SUM(p.amount) AS revenue
+FROM staff as s
+    INNER JOIN payment AS p ON p.staff_id = s.staff_id
+WHERE p.payment_date >= DATE '2017-01-01'
+    AND p.payment_date < DATE '2018-01-01'
+GROUP BY s.staff_id,
+    s.first_name,
+    s.last_name,
+    s.store_id
+ORDER BY revenue DESC;
+LIMIT 3 -- CTE
+    WITH staff_revenue AS (
+        SELECT p.staff_id,
+            SUM(p.amount) AS revenue
+        FROM public.payment AS p
+        WHERE p.payment_date >= DATE '2017-01-01'
+            AND p.payment_date < DATE '2018-01-01'
+        GROUP BY p.staff_id
+    ),
+    last_store AS (
+        SELECT DISTINCT ON (p.staff_id) p.staff_id,
+            i.store_id,
+            p.payment_date AS last_payment_date
+        FROM public.payment AS p
+            INNER JOIN public.rental AS r ON r.rental_id = p.rental_id
+            INNER JOIN public.inventory AS i ON i.inventory_id = r.inventory_id
+        WHERE p.payment_date >= DATE '2017-01-01'
+            AND p.payment_date < DATE '2018-01-01'
+        ORDER BY p.staff_id,
+            p.payment_date DESC,
+            p.payment_id DESC
+    )
+SELECT s.first_name,
+    s.last_name,
+    ls.store_id,
+    ls.last_payment_date,
+    sr.revenue
+FROM staff_revenue AS sr
+    INNER JOIN public.staff AS s ON s.staff_id = sr.staff_id
+    INNER JOIN last_store AS ls ON ls.staff_id = sr.staff_id
+ORDER BY sr.revenue DESC;
+LIMIT 3 -- Subquery
+SELECT s.first_name,
+    s.last_name,
+    ls.store_id,
+    ls.last_payment_date,
+    sr.revenue
+FROM (
+        SELECT p.staff_id,
+            SUM(p.amount) AS revenue
+        FROM public.payment AS p
+        WHERE p.payment_date >= DATE '2017-01-01'
+            AND p.payment_date < DATE '2018-01-01'
+        GROUP BY p.staff_id
+    ) AS sr
+    INNER JOIN public.staff AS s ON s.staff_id = sr.staff_id
+    INNER JOIN (
+        SELECT DISTINCT ON (p.staff_id) p.staff_id,
+            i.store_id,
+            p.payment_date AS last_payment_date
+        FROM public.payment AS p
+            INNER JOIN public.rental AS r ON r.rental_id = p.rental_id
+            INNER JOIN public.inventory AS i ON i.inventory_id = r.inventory_id
+        WHERE p.payment_date >= DATE '2017-01-01'
+            AND p.payment_date < DATE '2018-01-01'
+        ORDER BY p.staff_id,
+            p.payment_date DESC,
+            p.payment_id DESC
+    ) AS ls ON ls.staff_id = sr.staff_id
+ORDER BY sr.revenue DESC
+LIMIT 3;
+-- task 2
+/*
+ The direct JOIN solution solves the task in one query and is appropriate because
+ the relationships and aggregation are relatively simple. However, the
+ aggregation and audience classification are performed in the same query, which
+ can make the statement more difficult to extend.
+ 
+ The subquery solution separates the calculation of the number of rentals from
+ the final presentation of the audience description. This makes the calculated
+ number_of_rentals available as a separate column, but the nested structure can
+ be harder to read and maintain.
+ 
+ I would choose the CTE solution for this task because the rental count is an
+ important intermediate result used by the final query. The CTE gives that
+ result a meaningful name and separates the calculation stage from the
+ classification and sorting stage. This improves readability and makes future
+ changes easier. The direct JOIN solution is shorter, while the subquery and CTE
+ solutions make the intermediate logic more explicit.
+ */
+-- JOIN
+SELECT f.title,
+    COUNT(r.rental_id) AS number_of_rentals,
+    CASE
+        WHEN f.rating = 'G' THEN 'General Audiences'
+        WHEN f.rating = 'PG' THEN 'Parental Guidance Suggested'
+        WHEN f.rating = 'PG-13' THEN 'Parents Strongly Cautioned'
+        WHEN f.rating = 'R' THEN 'Restricted'
+        WHEN f.rating = 'NC-17' THEN 'Adults Only'
+        ELSE 'Unknown'
+    END AS audience_description
+FROM public.film AS f
+    INNER JOIN public.inventory AS i ON i.film_id = f.film_id
+    INNER JOIN public.rental AS r ON r.inventory_id = i.inventory_id
+GROUP BY f.film_id,
+    f.title,
+    f.rating
+ORDER BY number_of_rentals DESC,
+    f.title ASC
+LIMIT 5;
+-- CTE
+WITH rentals_number AS(
+    SELECT f.film_id,
+        f.title,
+        f.rating,
+        COUNT(rental_id) AS number_of_rentals
+    FROM film f
+        INNER JOIN inventory i ON f.film_id = i.film_id
+        INNER JOIN rental r ON r.inventory_id = i.inventory_id
+    GROUP BY f.film_id,
+        f.title,
+        f.rating
+)
+SELECT title,
+    number_of_rentals,
+    CASE
+        WHEN rating = 'G' THEN ' General Audiences'
+        WHEN rating = 'PG' THEN 'Parental Guidance Suggested'
+        WHEN rating = 'PG-13' THEN 'PG-13-Parent Strongly Cautioned'
+        WHEN rating = 'R' THEN 'Restricted'
+        WHEN rating = 'NC-17' THEN 'Adults Only'
+        ELSE 'Unknown'
+    END AS expected_audience
+FROM rentals_number
+ORDER BY number_of_rentals DESC,
+    title ASC
+LIMIT 5;
+-- Subquery
+SELECT rn.title,
+    rn.number_of_rentals,
+    CASE
+        WHEN rn.rating = 'G' THEN 'General Audiences'
+        WHEN rn.rating = 'PG' THEN 'Parental Guidance Suggested'
+        WHEN rn.rating = 'PG-13' THEN 'Parents Strongly Cautioned'
+        WHEN rn.rating = 'R' THEN 'Restricted'
+        WHEN rn.rating = 'NC-17' THEN 'Adults Only'
+        ELSE 'Unknown'
+    END AS audience_description
+FROM (
+        SELECT f.film_id,
+            f.title,
+            f.rating,
+            COUNT(r.rental_id) AS number_of_rentals
+        FROM public.film AS f
+            INNER JOIN public.inventory AS i ON i.film_id = f.film_id
+            INNER JOIN public.rental AS r ON r.inventory_id = i.inventory_id
+        GROUP BY f.film_id,
+            f.title,
+            f.rating
+    ) AS rn
+ORDER BY rn.number_of_rentals DESC,
+    rn.title ASC
+LIMIT 5;
