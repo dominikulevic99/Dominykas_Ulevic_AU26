@@ -275,10 +275,11 @@ SELECT film_id,
     release_year
 FROM film
 ORDER BY last_update DESC
-LIMIT 3
+LIMIT 3;
 SELECT store_id
 FROM public.store
 ORDER BY store_id;
+-- corected version of this query, OR statetment has higher priority than AND, so we need to but one extra ()
 BEGIN;
 INSERT INTO public.inventory (film_id, store_id, last_update)
 SELECT f.film_id,
@@ -290,16 +291,18 @@ FROM public.film AS f
         FROM public.store
     ) AS s
 WHERE (
-        f.title = 'Forrest Gump'
-        AND f.release_year = 1994
-    )
-    OR (
-        f.title = 'The Great Gatsby'
-        AND f.release_year = 2013
-    )
-    OR (
-        f.title = 'Django Unchained'
-        AND f.release_year = 2012
+        (
+            f.title = 'Forrest Gump'
+            AND f.release_year = 1994
+        )
+        OR (
+            f.title = 'The Great Gatsby'
+            AND f.release_year = 2013
+        )
+        OR (
+            f.title = 'Django Unchained'
+            AND f.release_year = 2012
+        )
     )
     AND NOT EXISTS (
         SELECT 1
@@ -311,7 +314,17 @@ RETURNING inventory_id,
     film_id,
     store_id,
     last_update;
-Commit;
+COMMIT;
+SELECT film_id,
+    title,
+    release_year
+FROM public.film
+WHERE (LOWER(title), release_year) IN (
+        ('forrest gump', 1994),
+        ('the great gatsby', 2013),
+        ('django unchained', 2012)
+    );
+COMMIT;
 -- identify customer with more that 43 orders and payments
 SELECT c.customer_id,
     c.first_name,
@@ -326,8 +339,9 @@ GROUP BY c.customer_id,
     c.last_name
 HAVING COUNT(DISTINCT r.rental_id) >= 43
     AND COUNT(DISTINCT p.payment_id) >= 43
-ORDER BY c.customer_id -- selecting one id from previous customer_id = 1
-    BEGIN;
+ORDER BY c.customer_id;
+-- selecting one id from previous customer_id = 1
+BEGIN;
 UPDATE customer
 SET first_name = 'Dominykas',
     last_name = 'Ulevic',
@@ -337,8 +351,9 @@ SET first_name = 'Dominykas',
         FROM public.address
         ORDER BY address_id
         LIMIT 1
-    ), last_update = CURRENT_DATE
-WHERE customer_id = 1
+    ), last_update = CURRENT_DATE -- WHERE customer_id = 1 this is hardcoded
+    -- this is not:
+WHERE email = 'du.email@example.com'
 RETURNING customer_id,
     first_name,
     last_name,
@@ -346,42 +361,16 @@ RETURNING customer_id,
     address_id,
     last_update;
 COMMIT;
--- check 
-select *
-FROM customer
-WHERE customer_id = 1 -- inspecting customer_id = 1 activity
-SELECT c.customer_id,
-    c.first_name,
-    c.last_name,
-    COUNT(DISTINCT r.rental_id) AS rental_amount,
-    COUNT(DISTINCT p.payment_id) AS payment_amount
-FROM customer c
-    LEFT JOIN rental r ON r.customer_id = c.customer_id
-    LEFT JOIN payment p ON p.customer_id = c.customer_id
-WHERE c.customer_id = 1
-GROUP BY c.customer_id,
-    c.first_name,
-    c.last_name
-ORDER BY c.customer_id -- result both 64
-    -- deleting payments
-    BEGIN;
-DELETE FROM public.payment
-WHERE customer_id = 1
-RETURNING payment_id,
-    customer_id,
-    rental_id,
-    amount,
-    payment_date;
-COMMIT;
--- deleting rentals
+--updated
 BEGIN;
 DELETE FROM public.rental
-WHERE customer_id = 1
-RETURNING rental_id,
-    customer_id,
-    inventory_id,
-    rental_date;
+WHERE customer_id = (
+        SELECT customer_id
+        FROM public.customer
+        WHERE email = 'du.email@example.com'
+    );
 COMMIT;
+-- deleting rentals
 -- check with same query
 -- adding films rental
 BEGIN;
@@ -399,8 +388,8 @@ SELECT TIMESTAMP '2017-06-01 10:00:00',
     CURRENT_DATE
 FROM public.film AS f
     INNER JOIN public.inventory AS i ON i.film_id = f.film_id
-    INNER JOIN public.staff AS s ON s.store_id = i.store_id
-    INNER JOIN public.customer AS c ON customer_id = 1
+    INNER JOIN public.staff AS s ON s.store_id = i.store_id -- removed hardcoding with customer_id =1 
+    INNER JOIN public.customer AS c ON c.email = 'du.email@example.com'
 WHERE f.title IN (
         'Forrest Gump',
         'The Great Gatsby',
@@ -434,7 +423,38 @@ FROM public.film AS f
     INNER JOIN public.inventory AS i ON i.film_id = f.film_id
     INNER JOIN public.staff AS s ON s.store_id = i.store_id
     INNER JOIN rental AS r ON r.inventory_id = i.inventory_id
-    INNER JOIN public.customer AS c ON c.customer_id = 1
+    INNER JOIN public.customer AS c ON BEGIN;
+INSERT INTO rental (
+        rental_date,
+        inventory_id,
+        customer_id,
+        staff_id,
+        last_update
+    )
+SELECT TIMESTAMP '2017-06-01 10:00:00',
+    i.inventory_id,
+    c.customer_id,
+    s.staff_id,
+    CURRENT_DATE
+FROM public.film AS f
+    INNER JOIN public.inventory AS i ON i.film_id = f.film_id
+    INNER JOIN public.staff AS s ON s.store_id = i.store_id
+    INNER JOIN public.customer AS c ON ON c.email = 'du.email@example.com'
+WHERE f.title IN (
+        'Forrest Gump',
+        'The Great Gatsby',
+        'Django Unchained'
+    )
+    AND s.staff_id = (
+        SELECT MIN(s2.staff_id)
+        FROM public.staff AS s2
+        WHERE s2.store_id = i.store_id
+    )
+RETURNING rental_id,
+    inventory_id,
+    customer_id,
+    staff_id;
+COMMIT;
 WHERE f.title IN (
         'Forrest Gump',
         'The Great Gatsby',
@@ -448,7 +468,8 @@ WHERE f.title IN (
 RETURNING customer_id,
     staff_id,
     rental_id,
-    amount COMMIT;
+    amount;
+COMMIT;
 -- final check
 SELECT f.title,
     f.release_year,
