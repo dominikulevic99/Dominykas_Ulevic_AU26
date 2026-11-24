@@ -13,24 +13,16 @@ CREATE TABLE healthcare.patients (
     last_name varchar(50) NOT NULL
 );
 SELECT *
-FROM patients -- Parent table: doctors will reference this table through role_id.
-    -- It must be created first so the foreign-key relationship can be added later.
-    CREATE TABLE IF NOT EXISTS healthcare.staff_roles (
-        role_id integer GENERATED ALWAYS AS IDENTITY,
-        role_name varchar(50) NOT NULL,
-        CONSTRAINT staff_roles_pk PRIMARY KEY (role_id),
-        CONSTRAINT staff_roles_name_unique UNIQUE (role_name)
-    );
--- creating other tables with no dependency on other
-CREATE TABLE IF NOT EXISTS healthcare.treatment_types (
-    treatment_type_id integer GENERATED ALWAYS AS IDENTITY,
-    treatment_name varchar(150) NOT NULL,
-    description varchar(500),
-    standard_price decimal(10, 2) NOT NULL,
-    CONSTRAINT treatment_types_pk PRIMARY KEY (treatment_type_id),
-    CONSTRAINT treatment_types_name_unique UNIQUE (treatment_name),
-    CONSTRAINT treatment_types_price_check CHECK (standard_price >= 0)
+FROM healthcare.patients;
+-- Parent table: doctors will reference this table through role_id.
+-- It must be created first so the foreign-key relationship can be added later.
+CREATE TABLE IF NOT EXISTS healthcare.staff_roles (
+    role_id integer GENERATED ALWAYS AS IDENTITY,
+    role_name varchar(50) NOT NULL,
+    CONSTRAINT staff_roles_pk PRIMARY KEY (role_id),
+    CONSTRAINT staff_roles_name_unique UNIQUE (role_name)
 );
+-- creating other tables with no dependency on other
 CREATE TABLE IF NOT EXISTS healthcare.treatment_types (
     treatment_type_id integer GENERATED ALWAYS AS IDENTITY,
     treatment_name varchar(150) NOT NULL,
@@ -96,25 +88,6 @@ CREATE TABLE IF NOT EXISTS healthcare.appointment_status_history (
         status IN ('Scheduled', 'Completed', 'Cancelled')
     )
 );
-CREATE TABLE IF NOT EXISTS healthcare.diagnostic_tests (
-    diagnostic_test_id integer GENERATED ALWAYS AS IDENTITY,
-    appointment_id integer NOT NULL,
-    test_name varchar(150) NOT NULL,
-    ordered_at timestamp NOT NULL,
-    performed_at timestamp,
-    result varchar(500),
-    test_status varchar(30) NOT NULL,
-    CONSTRAINT diagnostic_tests_pk PRIMARY KEY (diagnostic_test_id),
-    CONSTRAINT diagnostic_tests_appointment_fk FOREIGN KEY (appointment_id) REFERENCES healthcare.appointments (appointment_id),
-    CONSTRAINT diagnostic_tests_status_check CHECK (
-        test_status IN ('Scheduled', 'Completed', 'Cancelled')
-    ),
-    CONSTRAINT diagnostic_tests_ordered_date_check CHECK (ordered_at > TIMESTAMP '2000-01-01'),
-    CONSTRAINT diagnostic_tests_performed_date_check CHECK (
-        performed_at IS NULL
-        OR performed_at >= ordered_at
-    )
-);
 CREATE TABLE IF NOT EXISTS healthcare.prescriptions (
     prescription_id integer GENERATED ALWAYS AS IDENTITY,
     appointment_id integer NOT NULL,
@@ -123,25 +96,6 @@ CREATE TABLE IF NOT EXISTS healthcare.prescriptions (
     CONSTRAINT prescriptions_pk PRIMARY KEY (prescription_id),
     CONSTRAINT prescriptions_appointment_fk FOREIGN KEY (appointment_id) REFERENCES healthcare.appointments (appointment_id),
     CONSTRAINT prescriptions_issued_date_check CHECK (issued_at > TIMESTAMP '2000-01-01')
-);
-CREATE TABLE IF NOT EXISTS healthcare.diagnostic_tests (
-    diagnostic_test_id integer GENERATED ALWAYS AS IDENTITY,
-    appointment_id integer NOT NULL,
-    test_name varchar(150) NOT NULL,
-    ordered_at timestamp NOT NULL,
-    performed_at timestamp,
-    result varchar(500),
-    test_status varchar(30) NOT NULL,
-    CONSTRAINT diagnostic_tests_pk PRIMARY KEY (diagnostic_test_id),
-    CONSTRAINT diagnostic_tests_appointment_fk FOREIGN KEY (appointment_id) REFERENCES healthcare.appointments (appointment_id),
-    CONSTRAINT diagnostic_tests_status_check CHECK (
-        test_status IN ('Scheduled', 'Completed', 'Cancelled')
-    ),
-    CONSTRAINT diagnostic_tests_ordered_date_check CHECK (ordered_at > TIMESTAMP '2000-01-01'),
-    CONSTRAINT diagnostic_tests_performed_date_check CHECK (
-        performed_at IS NULL
-        OR performed_at >= ordered_at
-    )
 );
 CREATE TABLE IF NOT EXISTS healthcare.appointment_treatments (
     appointment_treatment_id integer GENERATED ALWAYS AS IDENTITY,
@@ -264,7 +218,8 @@ RETURNING role_id,
 COMMIT;
 -- cheking the result
 SELECT *
-FROM healthcare.staff_roles -- modifying table patiens
+FROM healthcare.staff_roles;
+-- modifying table patiens
 ALTER TABLE healthcare.patients
 ADD COLUMN IF NOT EXISTS phone_number varchar(50) NOT NULL;
 ALTER TABLE healthcare.patients
@@ -539,7 +494,8 @@ RETURNING diagnostic_test_id,
     ordered_at,
     performed_at,
     result,
-    test_status COMMIT;
+    test_status;
+COMMIT;
 INSERT INTO healthcare.medications (medication_name, description)
 VALUES (
         'Paracetamol',
